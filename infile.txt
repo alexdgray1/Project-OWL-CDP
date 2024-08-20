@@ -1,0 +1,6 @@
+DUID:MAMA0003
+TOPIC:status
+DATA:Test Data String
+DATE:date
+TIME:time
+
