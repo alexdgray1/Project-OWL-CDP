@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <string>
 #include <cstdint>
+#include <sstream>
 #include <vector>
 #include <stdexcept>
 #include <chrono>
@@ -13,32 +14,111 @@
 #include "Utils.h"
 #include "DuckLink.h"
 //#include "MamaDuck.h"
-//#include "PapaDuck.h"
+#include "PapaDuck.h"
 //#include "DetectorDuck.h"
 #include "redis.h"
 
 using namespace std;
 
+//string read_first_message_with_key(redisContext *c, const std::string& stream_name, const std::string& group_name, const std::string& consumer_name, const std::string& filter_key);
+//int acknowledge_message(redisContext *c, const std::string& stream_name, const std::string& group_name, const std::string& message_id);
+//void read_from_consumer_group(redisContext *c, const std::string& stream_name, const std::string& group_name, const std::string& consumer_name, const std::string& filter_key, std::string& key_buffer, std::string& message_buffer, std::string& message_id);
+vector<std::string> extractValues(const std::string input) {
+    std::vector<std::string> values;
 
+    // Use a stringstream to process the input string
+    std::stringstream ss(input);
+    std::string token;
 
-string extractValue(const std::string& input, const std::string& key) {
-    string::size_type startPos = input.find(key);
-    if (startPos == std::string::npos) return"";  // Key not found
-    
-    startPos += key.length();  // Move past the key
-    std::string::size_type endPos = input.find(' ', startPos);
-    if (endPos == std::string::npos) endPos = input.length();  
-    string data = input.substr(startPos, endPos - startPos);
-    return data;
+    // Temporary variables to store each field
+    std::string duid, topic, data, ducktype;
+    bool inDataField = false;
+
+    while (std::getline(ss, token, ' ')) {
+        size_t colonPos = token.find(':');
+        if (colonPos != std::string::npos) {
+            std::string fieldName = token.substr(0, colonPos);
+            std::string fieldValue = token.substr(colonPos + 1);
+
+            if (fieldName == "DUID") {
+                duid = fieldValue;
+            } else if (fieldName == "TOPIC") {
+                topic = fieldValue;
+            } else if (fieldName == "DATA") {
+                // Start collecting DATA field
+                data = fieldValue;
+                inDataField = true;
+            } else if (fieldName == "DUCKTYPE") {
+                // End of DATA field, collect DUCKTYPE field
+                ducktype = fieldValue;
+                inDataField = false;
+            }
+        } else if (inDataField) {
+            // Append to DATA field if we are still in the DATA field
+            data += ' ' + token;
+        }
+    }
+
+    // Add values to vector in the required order
+    values.push_back(duid);
+    values.push_back(topic);
+    values.push_back(data);
+    values.push_back(ducktype);
+
+    return values;
 }
 
 
-   struct StreamInfo {
-    const char* mystream;
-    const char* key;
-    const char* message;
-    const char* group_name;
-};
+
+// Function to initialize RedisConfig
+RedisConfig initializeRedisConfig() {
+    RedisConfig config;
+    config.stream_name = "mystream";
+    config.group_name = "TX";
+    config.consumer_name = "CDP";
+    config.filter_key = "WEB_CDP";
+    config.key = "WEB_CDP";
+    config.lora_queue = "LORA";
+    config.txWebQueue = "TXWeb";
+    config.txLoraQueue = "TXLora";
+    config.response ;
+    config.task;
+    config.messageID;
+    config.key_buffer;
+    config.messageBuffer;
+    return config;
+}
+
+string modifystring (string cdp, int position){
+    if(cdp[position] > 127){//this goes beyoned extended ascii range
+        cdp[position] = cdp[position] ^ 0x80;
+    }
+    else if (cdp[position] < 32){//non printable characters
+        cdp[position] = cdp[position] ^ 0x10;
+    }
+    else {
+        //dont modify
+    }
+    
+    
+    return cdp;
+}
+string unmodifystring (string cdp, int position){
+    if((cdp[position] ^ 0x80) >127){//this goes beyoned extended ascii range
+        cdp[position] = cdp[position] ^ 0x80;
+    }
+    else if ((cdp[position] ^ 0x10) < 32){//non printable characters
+        cdp[position] = cdp[position] ^ 0x10;
+    }
+    else {
+        //dont modify
+    }
+    
+    
+    return cdp;
+}
+
+
 
 int main()
 {
@@ -48,26 +128,24 @@ int main()
 
 //////connect redis server
 redisContext* redisConnect = redis_init("localhost", 6379);
-const char* mystream = "mystream";
-	const char* key = "WEB_CDP";
-	const char* value = "DUID:MAMA0003 TOPIC:status DATA:Test_Data_String DUCKTYPE:LINK";
-    const char* value2 = "DUID:MAMA0003 TOPIC:status DATA:Test_Data_String_Again DUCKTYPE:LINK";
-    const char* groupName = "CDP";
-    const char * txWebQueue = "WEBTX";
-    const char * txLoraQueue = "LORATX";
-    char message_id[255];
 
-    char  taskBuffer[255];
+RedisConfig redisConfig = initializeRedisConfig();
+    redisCommand(redisConnect, "DEL %s", redisConfig.txWebQueue);
+    redisCommand(redisConnect, "DEL %s", redisConfig.txLoraQueue);
+    delete_stream(redisConnect, redisConfig.stream_name);
 
-    redisCommand(redisConnect, "DEL %s", txWebQueue);
-    redisCommand(redisConnect, "DEL %s", txLoraQueue);
+    string value = "DUID:MAMA0001 TOPIC:status DATA:Test Data String DUCKTYPE:LINK ";
+    string value2 = "DUID:MAMA0001 TOPIC:status DATA:Test Data String Again DUCKTYPE:LINK ";
+
+    string msg;
 	  // Use a single buffer to receive the response
-    char response[256];  // Adjust the size according to your needs
-    create_consumer_group(redisConnect, mystream, groupName);
-    enqueue_task(redisConnect, txWebQueue, value);
-    publish(redisConnect, mystream, key, value, response);
-    enqueue_task(redisConnect, txWebQueue, value2);
-    publish(redisConnect, mystream, key, value2, response);
+    //char response[256];  // Adjust the size according to your needs
+    //string response;
+    create_consumer_group(redisConnect, redisConfig.stream_name, redisConfig.group_name);
+    enqueue_task(redisConnect, redisConfig.txWebQueue, value);
+    publish(redisConnect, redisConfig.stream_name, redisConfig.key, value, redisConfig.response);
+    enqueue_task(redisConnect, redisConfig.txWebQueue, value2);
+    publish(redisConnect, redisConfig.stream_name, redisConfig.key, value2, redisConfig.response);
 
 
 
@@ -75,56 +153,53 @@ const char* mystream = "mystream";
     
     while (true) {
         // Read from the consumer group
-        const string stream_name = "mystream";
-        const string group_name = "TX";
-        const char* streamName = "mystream";
-        const char* groupNm = "TX";
-        //const char* group_name2 = "RX";
-        const string consumer_name = "CDP";
-        string filter_key = "WEB_CDP";
-        const string lora_queue = "LORA";
-        string response;
-        string key_buffer;
-        string  messageBuffer;
-        string messageID;
-        bool messageReceived = 1;
+        
+        int messageReceived = 1;
         //string response;
 
-        //read_from_consumer_group(redisConnect, stream_name, group_name, consumer_name, filter_key, key_buffer, messageBuffer, messageID);
+        read_from_consumer_group(redisConnect, redisConfig.stream_name, redisConfig.group_name, redisConfig.consumer_name, redisConfig.filter_key, redisConfig.key_buffer, redisConfig.messageBuffer, redisConfig.messageID);
+
+        //msg = read_first_message_with_key(redisConnect, redisConfig.stream_name, redisConfig.group_name, redisConfig.consumer_name,redisConfig.filter_key, redisConfig.messageID);
+
         //check_pending_messages(redisConnect, streamName, groupNm);
-        int queueLength = queue_len(redisConnect, txWebQueue);
+        /*int queueLength = queue_len(redisConnect, txWebQueue);
         if (queueLength == 0) {
 			printf("No message received from Web\n");
             messageReceived = 0;
-		}
-       
+		}*/
+        messageReceived = acknowledge_message(redisConnect, redisConfig.stream_name, redisConfig.group_name, redisConfig.messageID);
+        
         if (messageReceived) {
             // Process the received message
             
-            dequeue_task(redisConnect, txWebQueue,taskBuffer );
-            string process = taskBuffer; // Assume message_buffer contains the raw data
-            acknowledge_message(redisConnect, streamName, groupNm, message_id);
+            dequeue_task(redisConnect, redisConfig.txWebQueue,redisConfig.task );
+            //string process = redisConfig.task; // Assume message_buffer contains the raw data
+            //acknowledge_message(redisConnect, streamName, groupNm, message_id);
 
-            string DUID = extractValue(process, "DUID:");
-            string TOPIC = extractValue(process, "TOPIC:");
-            string DATA = extractValue(process, "DATA:");
-            string DUCKTYPE = extractValue(process, "DUCKTYPE:");
+            
+            std::vector<std::string> extractedValues = extractValues(redisConfig.task);
+            msg.clear();
+            redisConfig.key_buffer.clear();
+            redisConfig.messageBuffer.clear();
+            redisConfig.messageID.clear();
+            //task.clear();
+            //taskBuffer[0] = '\0';
+            cout << "DUID: " <<extractedValues[0] << endl;
+            cout << "TOPIC: " << extractedValues[1] << endl;
+            cout << "DATA: " << extractedValues[2] << endl;
+            cout << "DUCKTYPE: " << extractedValues[3] << endl;
 
-            cout << "DUID: " << DUID << endl;
-            cout << "TOPIC: " << TOPIC << endl;
-            cout << "DATA: " << DATA << endl;
-            cout << "DUCKTYPE: " << DUCKTYPE << endl;
-
-            vector<uint8_t> dduid = duckutils::convertStringToVector(DUID);
-            uint8_t topic = Packet::stringToTopic(TOPIC);
-            vector<uint8_t> data = duckutils::convertStringToVector(DATA);
+            vector<uint8_t> dduid = duckutils::convertStringToVector(extractedValues[0]);
+            uint8_t topic = Packet::stringToTopic(extractedValues[1]);
+            vector<uint8_t> data = duckutils::convertStringToVector(extractedValues[2]);
+            string DUCKTYPE = extractedValues[3];
 
             // Instantiate Packet Object
             Packet dp;
             DuckLink dl;
             //DetectorDuck dd;
             //MamaDuck md;
-            //PapaDuck pd;
+            PapaDuck pd;
 
             // Create BloomFilter
             BloomFilter filter = BloomFilter(DEFAULT_NUM_SECTORS, DEFAULT_NUM_HASH_FUNCS, DEFAULT_BITS_PER_SECTOR, DEFAULT_MAX_MESSAGES);
@@ -135,8 +210,16 @@ const char* mystream = "mystream";
                 // Add code for socket connection to Lora for TX and RX
             }
             else if (DUCKTYPE == "PAPA") {
-                /*pd.setDuckId(duckutils::convertStringToVector("PAPA0001"));
-                pd.handleReceivedPacket(dp);*/
+                pd.setDuckId(duckutils::convertStringToVector("PAPA0001"));
+                /*-------Read from lora--------------*/
+                
+                /*-------Read from lora--------------*/
+                pd.handleReceivedPacket(dp);
+                
+
+                /*-------Send to web server-----------*/
+
+                /*-------Send to web server-----------*/
                 // Add code for socket connection to Lora for RX and maybe TX for duck commands
             }
             else if (DUCKTYPE == "LINK") {
@@ -145,15 +228,13 @@ const char* mystream = "mystream";
                 //dl.sendToLora(redisConnect, dl.getBuffer());
                 /*---------Send to Lora---------*/
                 vector<uint8_t> payload = dl.getBuffer();
-                char* charPtr = new char[payload.size() + 1];
-                memcpy(charPtr, payload.data(), payload.size());
-                charPtr[payload.size()] = '\0';
-                const char * txLoraQueue = "LORATX";
-                enqueue_task(redisConnect, txLoraQueue, charPtr);
+                string cdppayload = duckutils::convertVectorToString(payload);
+                
+                publish(redisConnect, redisConfig.stream_name, "CDP_LORA", cdppayload, redisConfig.response);
                 /*---------Send to Lora---------*/
-                delete[] charPtr;
-                messageBuffer.clear(); // Clear the content of messageBuffer
-                // Add code for socket connection to Lora for TX
+                
+                redisConfig.messageBuffer.clear(); // Clear the content of messageBuffer
+               
             }
             else if (DUCKTYPE == "DETECTOR") {
                 /*dd.setDuckId(duckutils::convertStringToVector("DETECTOR"));

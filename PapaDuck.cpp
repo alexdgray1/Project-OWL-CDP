@@ -11,6 +11,7 @@
 #include "PapaDuck.h"
 #include "BloomFilter.h"
 #include "Utils.h"
+#include "redis.h"
 
 #define DUCK_ERR_NONE 0
 
@@ -18,7 +19,13 @@ using std::cout;
 using std::endl;
 
 
+
 void PapaDuck::handleReceivedPacket(Packet &packet) {
+
+  
+
+//RedisConfig redisSendWebConfig = initializeRedisConfig();
+
 
   int err= 0;
   cout << "handleReceivedPacket() START" << endl;
@@ -57,7 +64,8 @@ void PapaDuck::handleReceivedPacket(Packet &packet) {
         handleAck(packet);
       }
       /*---------publish to  webserver---------*/
-
+      
+      
       /*---------publish to  webserver---------*/
     
   }
@@ -73,7 +81,7 @@ void PapaDuck::handleAck(Packet& packet) {
     logdbg_ln("Starting new ack broadcast timer with a delay of %d ms", timerDelay);
     ackTimer.in(timerDelay, ackHandler, this);
   }*/
-
+  cout << "Starting new ack broadcast" << endl;
   storeForAck(packet);
 
   if (ackBufferIsFull()) {
@@ -119,8 +127,7 @@ void PapaDuck::broadcastAck() {
     Duid duid = ackStore[i].first;
     Muid muid = ackStore[i].second;
     cout << "Storing ack for duid: " << duckutils::convertVectorToString(duid) <<  "muid: " << duckutils::convertVectorToString(muid) << endl;
-      //duckutils::convertToHex(duid.data(), DUID_LENGTH).c_str();
-      //duckutils::convertToHex(muid.data(), MUID_LENGTH).c_str();
+      
       
     dataPayload.insert(dataPayload.end(), duid.begin(), duid.end());
     dataPayload.insert(dataPayload.end(), muid.begin(), muid.end());
@@ -133,7 +140,7 @@ void PapaDuck::broadcastAck() {
   //err = duckRadio.sendData(txPacket->getBuffer());
 
   if (err == DUCK_ERR_NONE) {
-    //Packet packet = Packet(TXPacket.getBuffer());
+    
     filter.bloom_add(txAck.muid.data(), MUID_LENGTH);
   } else {
     cout << "ERROR handleReceivedPacket. Failed to send ack. Error: " << err << endl;
@@ -203,7 +210,7 @@ string unmodifyString (string cdp, int position){
     return cdp;
 }
 
-int main()
+/*int main()
 {
 
 ////set device ID
@@ -226,7 +233,7 @@ int main()
     }
 
     packetRecieved = duckutils::convertStringToVector(CDP);
-    dp.setBuffer(packetRecieved);
+    p.setBuffer(packetRecieved);d
 
     //gets payload generated
     vector<uint8_t> payload = dp.getBuffer();
@@ -265,8 +272,8 @@ int main()
     {
         //Handle relaying data
         cout << "Not this duck" << endl;
-    }*/
+    }
     //if not this do nothing
 
     return 0;
-}
+}*/
