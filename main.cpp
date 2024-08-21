@@ -236,7 +236,7 @@ RedisConfig redisConfig = initializeRedisConfig();
                     read_from_consumer_group(redisConnect, redisConfigRxLora.stream_name, redisConfigRxLora.group_name, redisConfigRxLora.consumer_name, redisConfigRxLora.filter_key, redisConfigRxLora.key_buffer,redisConfigRxLora.messageBuffer, redisConfigRxLora.messageID);
                     messageReceivedLora = acknowledge_message(redisConnect, redisConfigRxLora.stream_name, redisConfigRxLora.group_name, redisConfigRxLora.messageID);
                 }
-                
+                dp.setBuffer(duckutils::convertStringToVector(redisConfigRxLora.messageBuffer));
                 
                 /*-------Read from lora--------------*/
                 pd.handleReceivedPacket(dp);
