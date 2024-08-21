@@ -10,7 +10,7 @@ void publish(redisContext* redisConnect, const std::string& stream_name, const s
 
 void readStream(redisContext* redis_connect, const std::string& stream_name, std::string& response);
 
-void read_from_consumer_group(redisContext* c, const std::string& stream_name, const std::string& group_name, const std::string& consumer_name, const std::string& filter_key, std::string& key_buffer, std::string& message_buffer, std::string& messageID);
+void read_from_consumer_group(redisContext* c, const std::string& stream_name, const std::string& group_name, const std::string& consumer_name, const std::string& filter_key, std::string& key_buffer, std::string& messageBuffer, std::string& messageID, std::string& queue_name, std::string& task);
 
 std::string read_first_message_with_key(redisContext* c, const std::string& stream_name, const std::string& group_name, const std::string& consumer_name, const std::string& filter_key, std::string& messageID );
 //void create_consumer_group(redisContext * c, const char *stream_name, const char *group_name);

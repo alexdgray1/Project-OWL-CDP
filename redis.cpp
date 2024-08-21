@@ -6,6 +6,7 @@
 #include "redis.h"
 
 
+void enqueue_task(redisContext* c, const std::string& queue_name, const std::string& task);
 
 redisContext * redis_init(const char * server, int port){
 	puts("redis init");
@@ -51,7 +52,7 @@ void publish(redisContext* redisConnect, const std::string& stream_name, const s
     freeReplyObject(reply);
 }
 
-void read_from_consumer_group(redisContext* c, const std::string& stream_name, const std::string& group_name, const std::string& consumer_name, const std::string& filter_key, std::string& key_buffer, std::string& message_buffer, std::string& messageID) {
+void read_from_consumer_group(redisContext* c, const std::string& stream_name, const std::string& group_name, const std::string& consumer_name, const std::string& filter_key, std::string& key_buffer, std::string& messageBuffer, std::string& messageID, std::string& queue_name, std::string& task) {
     // Execute the XREADGROUP command
     redisReply* reply = (redisReply*)redisCommand(c, "XREADGROUP GROUP %s %s STREAMS %s >", group_name.c_str(), consumer_name.c_str(), stream_name.c_str());
 
@@ -62,7 +63,7 @@ void read_from_consumer_group(redisContext* c, const std::string& stream_name, c
 
     // Clear buffers
     key_buffer.clear();
-    message_buffer.clear();
+    messageBuffer.clear();
     messageID.clear();
 
     if (reply->type == REDIS_REPLY_ARRAY && reply->elements > 0) {
@@ -83,15 +84,19 @@ void read_from_consumer_group(redisContext* c, const std::string& stream_name, c
                         // Key matches the filter_key
                         found_key = true;
                         key_buffer = fields->element[k]->str;
-                        message_buffer = fields->element[k + 1]->str;
+                        messageBuffer = fields->element[k + 1]->str;
+                        task = messageBuffer;
                         std::cout << "Filtered Message Content: " << fields->element[k]->str << ": " << fields->element[k + 1]->str << "\n";
+                        enqueue_task(c, queue_name, task);
+                        task.clear();
+                        
                     }
                 }
 
                 if (!found_key) {
                     // If no matching key found, clear buffers
                     key_buffer.clear();
-                    message_buffer.clear();
+                    messageBuffer.clear();
                 }
             }
         }
@@ -99,7 +104,7 @@ void read_from_consumer_group(redisContext* c, const std::string& stream_name, c
         std::cout << "No messages found.\n";
         // Clear buffers
         key_buffer.clear();
-        message_buffer.clear();
+        messageBuffer.clear();
     }
 
     freeReplyObject(reply);

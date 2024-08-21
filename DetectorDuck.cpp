@@ -27,9 +27,11 @@ void DetectorDuck::handleReceivedPacket() {
     return;
   }
 
-  if (data[TOPIC_POS] == reservedTopic::pong) {
-    //logdbg("run() - got ping response!");
-    //rssiCb(duckRadio.getRSSI());
+  if (data.at(TOPIC_POS) == reservedTopic::pong) {
+    cout << "Got a pong" << endl;
+  }
+  else {
+    cout << "Womp womp womp" << endl;
   }
 }
 

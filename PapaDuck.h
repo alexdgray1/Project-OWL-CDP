@@ -20,7 +20,8 @@ class PapaDuck : public Packet {
 
     using rxDoneCallback = void (*)(std::vector<uint8_t> data );
     using txDoneCallback = void (*)(void);
-    ~PapaDuck() {}
+    ~PapaDuck() {
+    }
 
 
     int getType() { return DuckType::PAPA; }

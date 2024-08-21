@@ -208,7 +208,9 @@ Packet(std::vector<uint8_t> buff)
     }*/
 
 
-    ~Packet() {}
+    ~Packet() {
+        
+    }
 
   /**
    * @brief Resets the cdp packet and underlying byte buffers.

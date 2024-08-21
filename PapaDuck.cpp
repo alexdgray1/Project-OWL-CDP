@@ -22,10 +22,6 @@ using std::endl;
 
 void PapaDuck::handleReceivedPacket(Packet &packet) {
 
-  
-
-//RedisConfig redisSendWebConfig = initializeRedisConfig();
-
 
   int err= 0;
   cout << "handleReceivedPacket() START" << endl;
@@ -54,19 +50,15 @@ void PapaDuck::handleReceivedPacket(Packet &packet) {
   bool relay = packet.checkRelayPacket(&filter, packet.getBuffer());
   if (relay) {
     cout << "relaying: " <<  duckutils::convertToHex(packet.getBuffer().data(), packet.getBuffer().size()).c_str() << endl;
-    //loginfo_ln("invoking callback in the duck application...");
+    
     
     //recvDataCallback(rxPacket->getBuffer());
-    
+    enableAcks(1);
     if (acksEnabled) {
       
       if (needsAck(packet)) {
         handleAck(packet);
       }
-      /*---------publish to  webserver---------*/
-      
-      
-      /*---------publish to  webserver---------*/
     
   }
 
