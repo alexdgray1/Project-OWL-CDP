@@ -89,6 +89,24 @@ RedisConfig initializeRedisConfig() {
     return config;
 }
 
+RedisConfig initializeRedisRxLoraConfig() {
+    RedisConfig config;
+    config.stream_name = "mystream";
+    config.group_name = "RX";
+    config.consumer_name = "CDP";
+    config.filter_key = "LORA_CDP";
+    config.key = "LORA_CDP";
+    config.lora_queue;
+    config.txWebQueue;
+    config.txLoraQueue;
+    config.response ;
+    config.task;
+    config.messageID;
+    config.key_buffer;
+    config.messageBuffer;
+    return config;
+};
+
 string modifystring (string cdp, int position){
     if(cdp[position] > 127){//this goes beyoned extended ascii range
         cdp[position] = cdp[position] ^ 0x80;
@@ -155,6 +173,7 @@ RedisConfig redisConfig = initializeRedisConfig();
         // Read from the consumer group
         
         int messageReceived = 1;
+        int messageReceivedLora = 0;
         //string response;
 
         read_from_consumer_group(redisConnect, redisConfig.stream_name, redisConfig.group_name, redisConfig.consumer_name, redisConfig.filter_key, redisConfig.key_buffer, redisConfig.messageBuffer, redisConfig.messageID);
@@ -211,16 +230,33 @@ RedisConfig redisConfig = initializeRedisConfig();
             }
             else if (DUCKTYPE == "PAPA") {
                 pd.setDuckId(duckutils::convertStringToVector("PAPA0001"));
+                RedisConfig redisConfigRxLora = initializeRedisRxLoraConfig();
                 /*-------Read from lora--------------*/
+                while(!messageReceivedLora){
+                    read_from_consumer_group(redisConnect, redisConfigRxLora.stream_name, redisConfigRxLora.group_name, redisConfigRxLora.consumer_name, redisConfigRxLora.filter_key, redisConfigRxLora.key_buffer,redisConfigRxLora.messageBuffer, redisConfigRxLora.messageID);
+                    messageReceivedLora = acknowledge_message(redisConnect, redisConfigRxLora.stream_name, redisConfigRxLora.group_name, redisConfigRxLora.messageID);
+                }
+                
                 
                 /*-------Read from lora--------------*/
                 pd.handleReceivedPacket(dp);
                 
 
                 /*-------Send to web server-----------*/
+                
+                vector<uint8_t> receivedData = dp.getBuffer();
 
+                vector<uint8_t> duid;
+                vector<uint8_t> receivedMsg;
+                receivedMsg.assign(receivedData.begin()+DATA_POS, receivedData.end());
+                duid.assign(receivedData.begin(), receivedData.begin() + 8);
+                string receivedSduid = duckutils::convertVectorToString(duid);
+                string receivedTopic = Packet::topicToString(receivedData.at(TOPIC_POS));
+                string receivedMessage = duckutils::convertVectorToString(receivedMsg);
+                string messageForWeb = "SDUID:" + receivedSduid + " TOPIC:"  + receivedTopic + " DATA:" + receivedMessage +" ";
+                publish(redisConnect, redisConfig.stream_name, "CDP_WEB", messageForWeb, redisConfig.response);
                 /*-------Send to web server-----------*/
-                // Add code for socket connection to Lora for RX and maybe TX for duck commands
+                
             }
             else if (DUCKTYPE == "LINK") {
                 dl.setDuckId(duckutils::convertStringToVector("DUCK0001"));

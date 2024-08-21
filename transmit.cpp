@@ -94,14 +94,18 @@ vector<string> processInputFile(string input)
         return cdp;
     }*/
 string modifystring (string cdp, int position){
-    /*if(cdp[position] > 9){
-        cdp[position] = cdp[position] + 55;
+    if(cdp[position] > 127){//this goes beyoned extended ascii range
+        cdp[position] = cdp[position] ^ 0x80;
+        
     }
-    else{
-        cdp[position] = cdp[position] + 48;
-    }*/
-    //cdp[position] = 
-    cdp[position] = cdp[position] + 32;
+    else if (cdp[position] < 32){//non printable characters
+        cdp[position] = cdp[position] ^ 0x1F;
+    }
+    else {
+        //dont modify
+    }
+    
+    //cdp[position] = cdp[position] + 32;
     return cdp;
 }
 

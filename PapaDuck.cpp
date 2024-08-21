@@ -200,12 +200,12 @@ void PapaDuck::sendCommand(uint8_t cmd, std::vector<uint8_t> value, std::vector<
 }
 
 string unmodifyString (string cdp, int position){
-    /*if(cdp[position] > 54){
+    if(cdp[position] > 54){
         cdp[position] = cdp[position] - 55;
     }
     else{
         cdp[position] = cdp[position] - 48;
-    }*/
+    }
     cdp[position] = cdp[position] - 32;
     return cdp;
 }
@@ -226,6 +226,7 @@ string unmodifyString (string cdp, int position){
     vector<uint8_t> packetRecieved;
     //packetRecieved = {'P', 'A', 'P', 'A' , 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A' , 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A' , 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A', 'P', 'A'};
     string CDP = "DUCK0001MAMA0003Y4D5G50��mTest Data String";
+                  DUCK0001MAMA0003DSIYS|6Test Data String
 
     for(int i = 0; i < 7; i++)
     {
@@ -233,7 +234,7 @@ string unmodifyString (string cdp, int position){
     }
 
     packetRecieved = duckutils::convertStringToVector(CDP);
-    p.setBuffer(packetRecieved);d
+    dp.setBuffer(packetRecieved);
 
     //gets payload generated
     vector<uint8_t> payload = dp.getBuffer();

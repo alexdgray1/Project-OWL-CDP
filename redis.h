@@ -52,4 +52,20 @@ struct RedisConfig {
     string messageBuffer;
 };
 
+/*struct RedisRxLoraConfig {
+    string stream_name;
+    string group_name;
+    string consumer_name;
+    string filter_key;
+    string key;
+    //string lora_queue;
+    //string txWebQueue;
+    //string txLoraQueue;
+    string response;
+    string task;
+    string messageID;
+    string key_buffer;
+    string messageBuffer;
+};*/
+
 #endif
