@@ -94,16 +94,16 @@ string unmodifystring (string cdp, int position){
     return cdp;
 }
 
-RedisConfig initializeRedisConfig() {
+RedisConfig initializeRedisWebConfig() {
     RedisConfig config;
     config.stream_name = "mystream";
     config.group_name = "TX";
     config.consumer_name = "CDP";
-    config.filter_key = "WEB_CDP";
-    config.key = "WEB_CDP";
-    config.lora_queue = "LORA";
+    config.txKey = "WEB_CDP";
+    config.rxKey = "CDP_WEB";
     config.txWebQueue = "TXWeb";
-    config.txLoraQueue = "TXLora";
+    config.rxWebQueue = "RXWeb";
+    config.txLoraQueue;
     config.response ;
     config.task;
     config.messageID;
@@ -112,16 +112,16 @@ RedisConfig initializeRedisConfig() {
     return config;
 }
 
-RedisConfig initializeRedisRxLoraConfig() {
+RedisConfig initializeRedisLoraConfig() {
     RedisConfig config;
     config.stream_name = "mystream";
     config.group_name = "RX";
     config.consumer_name = "CDP";
-    config.filter_key = "LORA_CDP";
-    config.key = "LORA_CDP";
-    config.lora_queue;
-    config.txWebQueue;
-    config.txLoraQueue;
+    config.txKey = "CDP_LORA";
+    config.rxKey = "LORA_CDP";
+    config.rxLoraQueue = "RXLora";
+    //config.txWebQueue;
+    config.txLoraQueue = "TXLora";
     config.response ;
     config.task;
     config.messageID;
@@ -139,23 +139,18 @@ int main()
 //////connect redis server
 redisContext* redisConnect = redis_init("localhost", 6379);
 
-RedisConfig redisConfig = initializeRedisConfig();
-redisReply* reply = (redisReply*)redisCommand(redisConnect, "DEL %s", redisConfig.txWebQueue.c_str());
+RedisConfig redisConfigWeb = initializeRedisWebConfig();
+RedisConfig redisConfigLora = initializeRedisLoraConfig();
+redisReply* reply = (redisReply*)redisCommand(redisConnect, "DEL %s", redisConfigWeb.txWebQueue.c_str());
 //redisReply* reply = (redisReply*)redisCommand(redisConnect, "DEL %s", redisConfig.txLoraQueue.c_str());
 //redisReply* reply = (redisReply*)delete_stream(redisConnect, redisConfig.stream_name);
 
 string value = "DUID:MAMA0001 TOPIC:status DATA:Test Data String DUCKTYPE:LINK ";
 string value2 = "DUID:MAMA0001 TOPIC:status DATA:Test Data String Again DUCKTYPE:LINK ";
 
-//string msg;
-    // Use a single buffer to receive the response
-//char response[256];  // Adjust the size according to your needs
-//string response;
-create_consumer_group(redisConnect, redisConfig.stream_name, redisConfig.group_name);
-//enqueue_task(redisConnect, redisConfig.txWebQueue, value);
-publish(redisConnect, redisConfig.stream_name, redisConfig.key, value, redisConfig.response);
-//enqueue_task(redisConnect, redisConfig.txWebQueue, value2);
-publish(redisConnect, redisConfig.stream_name, redisConfig.key, value2, redisConfig.response);
+create_consumer_group(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.group_name);
+publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value, redisConfigWeb.response);
+publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value2, redisConfigWeb.response);
 
 /*---------conditional checks for while loops*/
     int messageReceived = 1;
@@ -190,17 +185,17 @@ publish(redisConnect, redisConfig.stream_name, redisConfig.key, value2, redisCon
 
     while (true) {
         
-        print_queue(redisConnect, redisConfig.txWebQueue);
-        read_from_consumer_group(redisConnect, redisConfig.stream_name, redisConfig.group_name, redisConfig.consumer_name, redisConfig.filter_key, redisConfig.key_buffer, redisConfig.messageBuffer, redisConfig.messageID, redisConfig.txWebQueue, redisConfig.task);
-        messageReceived = acknowledge_message(redisConnect, redisConfig.stream_name, redisConfig.group_name, redisConfig.messageID);
+        print_queue(redisConnect,redisConfigWeb.txWebQueue);
+        read_from_consumer_group(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.group_name, redisConfigWeb.consumer_name, redisConfigWeb.txKey, redisConfigWeb.key_buffer, redisConfigWeb.messageBuffer, redisConfigWeb.messageID, redisConfigWeb.txWebQueue, redisConfigWeb.task);
+        messageReceived = acknowledge_message(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.group_name, redisConfigWeb.messageID);
         sleep(1);
 
         if (messageReceived) {
 
             messageReceived = 0;
-            dequeue_task(redisConnect, redisConfig.txWebQueue, redisConfig.task);
-            extractedValues = extractValues(redisConfig.task);
-            redisConfig.task.clear();
+            dequeue_task(redisConnect, redisConfigWeb.txWebQueue, redisConfigWeb.task);
+            extractedValues = extractValues(redisConfigWeb.task);
+            redisConfigWeb.task.clear();
             
             cout << "DUID: " <<extractedValues[0] << endl;
             cout << "TOPIC: " << extractedValues[1] << endl;
@@ -224,17 +219,19 @@ publish(redisConnect, redisConfig.stream_name, redisConfig.key, value2, redisCon
             }
             else if (DUCKTYPE == "PAPA") {
                 pd.setDuckId(duckutils::convertStringToVector("PAPA0001"));
-                RedisConfig redisConfigRxLora = initializeRedisRxLoraConfig();
                 /*-------Read from lora begin--------------*/
 
                 while(!messageReceivedLora){
-                    sleep(5);
-                    read_from_consumer_group(redisConnect, redisConfigRxLora.stream_name, redisConfigRxLora.group_name, redisConfigRxLora.consumer_name, redisConfigRxLora.filter_key, redisConfigRxLora.key_buffer,redisConfigRxLora.messageBuffer, redisConfigRxLora.messageID, redisConfigRxLora.txLoraQueue, redisConfigRxLora.task);
-                    messageReceivedLora = acknowledge_message(redisConnect, redisConfigRxLora.stream_name, redisConfigRxLora.group_name, redisConfigRxLora.messageID);
+                    //sleep(5);
+                    read_from_consumer_group(redisConnect, redisConfigLora.stream_name, redisConfigLora.group_name, redisConfigLora.consumer_name, redisConfigLora.rxKey, redisConfigLora.key_buffer,redisConfigLora.messageBuffer, redisConfigLora.messageID, redisConfigLora.txLoraQueue, redisConfigLora.task);
+                    messageReceivedLora = acknowledge_message(redisConnect, redisConfigLora.stream_name, redisConfigLora.group_name, redisConfigLora.messageID);
                     
                 }
-                dequeue_task(redisConnect, redisConfigRxLora.txWebQueue, redisConfigRxLora.task);
-                dp.setBuffer(duckutils::convertStringToVector(redisConfigRxLora.task));
+                dequeue_task(redisConnect, redisConfigLora.rxLoraQueue, redisConfigLora.task);
+                for (int i = 0; i < 7; i++) {//undoes modifying of string to get actual data initially put in
+                    redisConfigLora.task = unmodifystring(redisConfigLora.task, TOPIC_POS + i);
+                }
+                dp.setBuffer(duckutils::convertStringToVector(redisConfigLora.task));
                 messageReceivedLora = 1;
                 
                 /*-------Read from lora end--------------*/
@@ -252,9 +249,10 @@ publish(redisConnect, redisConfig.stream_name, redisConfig.key, value2, redisCon
                 receivedTopic = Packet::topicToString(receivedData.at(TOPIC_POS));
                 receivedMessage = duckutils::convertVectorToString(receivedMsg);
                 messageForWeb = "SDUID:" + receivedSduid + " TOPIC:"  + receivedTopic + " DATA:" + receivedMessage +" ";
-                publish(redisConnect, redisConfig.stream_name, "CDP_WEB", messageForWeb, redisConfig.response);
+                publish(redisConnect, redisConfigWeb.stream_name, "CDP_WEB", messageForWeb, redisConfigWeb.response);
 
-                redisConfigRxLora.messageBuffer.clear();
+                redisConfigLora.messageBuffer.clear();
+                //dp.~Packet();
                 /*-------Send to web server end-----------*/
 
                 
@@ -268,8 +266,14 @@ publish(redisConnect, redisConfig.stream_name, redisConfig.key, value2, redisCon
                 /*---------Send to Lora---------*/
                 payload = dl.getBuffer();
                 cdppayload = duckutils::convertVectorToString(payload);
-                publish(redisConnect, redisConfig.stream_name, "CDP_LORA", cdppayload, redisConfig.response);
+                for (int i = 0; i < 7; i++) {//modifies all unreadable characters within the string to make sure they are readable
+                    cdppayload = modifystring(cdppayload, TOPIC_POS + i);
+                }
+                //cdppayload = modifystring(cdppayload, TOPIC_POS)
+                publish(redisConnect, redisConfigLora.stream_name, "CDP_LORA", cdppayload, redisConfigLora.response);
                 /*---------Send to Lora---------*/
+
+                //dp.~Packet();
                 
                 
             }
@@ -286,9 +290,11 @@ publish(redisConnect, redisConfig.stream_name, redisConfig.key, value2, redisCon
         }
         else {
             cout << "No message received. Waiting for next poll..." << endl;
+            sleep(5);
         }
 
         // Sleep for a while before checking again
+        
         sleep(1); // Sleep for 1 second (or adjust as needed)
     }
     redisFree(redisConnect);

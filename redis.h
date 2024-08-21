@@ -40,11 +40,12 @@ struct RedisConfig {
     string stream_name;
     string group_name;
     string consumer_name;
-    string filter_key;
-    string key;
-    string lora_queue;
+    string txKey;
+    string rxKey;
     string txWebQueue;
     string txLoraQueue;
+    string rxWebQueue;
+    string rxLoraQueue;
     string response;
     string task;
     string messageID;
