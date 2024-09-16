@@ -25,7 +25,7 @@ class MamaDuck : public Packet {
 
     int getType() {return DuckType::MAMA;}
     void handleReceivedPacket();
-    void handleReceivedPacket(Packet &packet);
+    void handleReceivedPacket(Packet &dp);
 
   private :
   //rxDoneCallback recvDataCallback;

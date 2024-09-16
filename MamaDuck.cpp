@@ -8,6 +8,7 @@
 #include <chrono>
 #include <ctime>
 #include <string>
+#include "redis.h"
 #include "Packet.h"
 #include "MamaDuck.h"
 #include "BloomFilter.h"
@@ -20,101 +21,58 @@ using std::string;
 using std::vector;
 using std::endl;
 
+
+redisContext* redisConnect = redis_init("localhost", 6379);
+string response;
+
 string modifystring (string cdp, int position){
-    if(cdp[position] > 9){
-        cdp[position] = cdp[position] + 55;
+    if(cdp[position] > 127){//this goes into extended ascii range
+        cdp[position] = cdp[position] ^ 0x80;
     }
-    else{
-        cdp[position] = cdp[position] + 48;
+    else if (cdp[position] < 32){//non printable characters
+        cdp[position] = cdp[position] ^ 0x20;
     }
-    //cdp[position] = 
-    return cdp;
-}
-string unmodifyString (string cdp, int position){
-    /*if(cdp[position] > 54){
-        cdp[position] = cdp[position] - 55;
+    else {
+        //dont modify
     }
-    else{
-        cdp[position] = cdp[position] - 48;
-    }*/
-    cdp[position] = cdp[position] - 32;
-    return cdp;
-}
-/*string unmodifyString (string cdp, int position){
-    char aByte;
-    if(cdp[position] > 57 && cdp[position+1] > 57 ){
-        aByte = (((cdp[position] -55) << 4) &0xF0) | ((cdp[position+1]-55) & 0x0F);
-        //aByte = (cdp[position] - 55)  << 4;
-    }
-    else if (cdp[position] > 57 && cdp[position+1] <57)
-    {
-        aByte = (((cdp[position] -55) << 4) &0xF0) | ((cdp[position+1]-48) & 0x0F);
-    }
-    else if (cdp[position] < 57 && cdp[position+1] >57)
-    {
-        aByte = (((cdp[position] -48) << 4) &0xF0) | ((cdp[position+1]-55) & 0x0F);
-    }
-    else{
-        aByte = (((cdp[position]-48) << 4) & 0xF0) | ((cdp[position+1]-48) &0x0F);
-        //aByte = (cdp[position] -48) << 4;
-    }
-    cout << aByte << endl;
-    cdp[position]= aByte;
-    cdp.erase(position+1, 1);
-    return cdp;
-
-}*/
-
-void MamaDuck::run () {
-  //set in continous receive mode
-
-  //declare mamaduck and its duck ID
-  MamaDuck mama;
-  mama.setDuckId(duckutils::convertStringToVector("MAMA0003"));
-  
-  
-  //while(1)
-  //if received data
-    //handle received packet 
-    //in handling packet start tx mode
-    //once sent go back to continous receive
-  //else
-    //do nothing
-}
-
-
-void MamaDuck::handleReceivedPacket(Packet& packet) {
-  int err = 0;
-  //vector<uint8_t> packetRecieved;
-  /* ----------------receive from Lora---------------*/
-/*char response[256];  // Adjust the size according to your needs
-const char* mystream = "mystream";
-const char* key = "CDP_LORA";
-const char* message = "hello world";
-const char* group_name = "LORA";
-read_from_consumer_group(c, mystream, group_name, )*/
-
-/* ----------------receive from Lora---------------*/
     
-  //Packet packet = Packet(dataRx);
-  //dataRx = packet.getBuffer();
-  packet.decodePacket(packet.getBuffer());
+    
+    return cdp;
+}
+//||
+string unmodifystring (string cdp, int position){
+    
+    
 
-  //dataRx = duckutils::convertStringToVector(dataReceived);
+    if ((cdp[position] ^ 0x20) < 32  ){//non printable characters
+        cdp[position] = cdp[position] ^ 0x20;
+    }
+    else if((cdp[position] ^ 0x80) >127){//this goes into extended ascii range
+        cdp[position] = cdp[position] ^ 0x80;
+    }
+    else {
+        //dont modify
+    }
+    
+    
+    return cdp;
+}
+
+
+void MamaDuck::handleReceivedPacket(Packet& dp) {
+  int err = 0;
+  
   bool relay = false;
-  
-  std::cout << "Handle Received Packet: Begin" << endl;
 
-    /*------get received data from radio*/
+  Packet txAck;
+  string ackPayload;
+  string cmdPayload;
+  string payload;
 
-  
-  std::cout << "Got data from radio, prepare for relay. size: " << packet.getBuffer().size() << endl;
 
-  relay = packet.checkRelayPacket(&filter, packet.getBuffer());
+  relay = dp.checkRelayPacket(&filter, dp.getBuffer());
   if (relay) {
-    //TODO: this callback is causing an issue, needs to be fixed for mamaduck to get packet data
-    //recvDataCallback(rxPacket->getBuffer());
-
+    
     cout << "handleReceivedPacket: packet RELAY START" << endl;
 
     // NOTE:
@@ -122,106 +80,151 @@ read_from_consumer_group(c, mystream, group_name, )*/
     // packet being sent below will never be received, especially if the cluster is small
     // there are not many alternative paths to reach other mama ducks that could relay the packet.
     
-    //Packet rxDP = Packet(packet.getBuffer());
+    
 
     //Check if Duck is desitination for this packet before relaying
-    if (BROADCAST_DUID == packet.dduid) {
+    if (BROADCAST_DUID == dp.dduid) {
       cout << "Packet was meant for all Papa ducks " << endl;
-      switch(packet.topic) {
+      switch(dp.topic) {
         case reservedTopic::ping:
-          //loginfo_ln("ping received");
+          
           cout << "Ping Received" << endl;
           err = sendPong();
           if (err != DUCK_ERR_NONE) {
-            //logerr_ln("ERROR failed to send pong message. rc = %d",err);
+            
             cout << "Error: Failed to send pong " << err << endl;
           }
           return;
         break;
         case reservedTopic::ack:{
-          handleAck(packet);
+
+          handleAck(dp);
           //relay batch ack 
-          //err = duckRadio.relayPacket(rxPacket);
-          if (err != DUCK_ERR_NONE) {
-            //logerr_ln("====> ERROR handleReceivedPacket failed to relay. rc = %d",err);
-          } else {
-            //loginfo_ln("handleReceivedPacket: packet RELAY DONE");
-          }
-        }
-        break;
-        case reservedTopic::cmd:
-          //loginfo_ln("Command received");
-          handleCommand(packet);
 
-          //err = duckRadio.relayPacket(rxPacket);
-          if (err != DUCK_ERR_NONE) {
-            //logerr_ln("====> ERROR handleReceivedPacket failed to relay. rc = %d",err);
-          } else {
-            //loginfo_ln("handleReceivedPacket: packet RELAY DONE");
+          /*---send to lora-----*/
+          ackPayload = duckutils::convertVectorToString(dp.getBuffer());
+          for (int i =0; i < 7; i++) {
+            ackPayload = modifystring(ackPayload, i);
           }
-        break;
-        default:
-          //err = duckRadio.relayPacket(rxPacket);
-          if (err != DUCK_ERR_NONE) {
-            //logerr_ln("====> ERROR handleReceivedPacket failed to relay. rc = %d",err);
-          } else {
-            //loginfo_ln("handleReceivedPacket: packet RELAY DONE");
-          }
-      }
-    } else if(sduid == packet.dduid) { //Target device check
-        std::vector<uint8_t> dataPayload;
-        uint8_t num = 1;
-      cout << "Packet was meant to this duck " << endl;
-      switch(packet.topic) {
-        case topics::dcmd:
-          cout<<"Duck command received" << endl;
-          handleDuckCommand(packet);
-        break;
-        case reservedTopic::cmd:
-          cout << "Command received" << endl;
+          publish(redisConnect, "mystream", "CDP_LORA",ackPayload , response);
           
-          //Start send ack that command was received
-          dataPayload.push_back(num);
 
-          dataPayload.insert(dataPayload.end(), packet.sduid.begin(), packet.sduid.end());
-          dataPayload.insert(dataPayload.end(), packet.muid.begin(), packet.muid.end());
-
-          err = packet.prepareForSending(&filter, PAPADUCK_DUID, reservedTopic::ack,DuckType::MAMA, 0, dataPayload);
-          if (err != DUCK_ERR_NONE) {
-          cout << "ERROR handleReceivedPacket. Failed to prepare ack. Error: " << err << endl;
-          }
-
-          //err = duckRadio.sendData(txPacket->getBuffer());
-          if (err == DUCK_ERR_NONE) {
-            filter.bloom_add(packet.muid.data(), MUID_LENGTH);
-          } else {
-            cout << "ERROR handleReceivedPacket. Failed to send ack. Error: " << endl;
-          }
-          
-          //Handle Command
-          handleCommand(packet);
-
-          break;
-        case reservedTopic::ack:{
-          handleAck(packet);
-        }
-        break;
-        default:
-          //err = duckRadio.relayPacket(rxPacket);
           if (err != DUCK_ERR_NONE) {
             cout << "====> ERROR handleReceivedPacket failed to relay. rc = " << endl;
           } else {
             cout << "handleReceivedPacket: packet RELAY DONE" << endl;
           }
+        }
+        break;
+        case reservedTopic::cmd:
+          //loginfo_ln("Command received");
+          handleCommand(dp);
+
+          /*---send to lora-----*/
+          cmdPayload = duckutils::convertVectorToString(dp.getBuffer());
+          for (int i =0; i < 7; i++) {
+            cmdPayload = modifystring(cmdPayload, TOPIC_POS+ i);
+          }
+          publish(redisConnect, "mystream", "CDP_LORA",cmdPayload , response);
+          /*---send to lora done-----*/
+
+          if (err != DUCK_ERR_NONE) {
+            cout << "====> ERROR handleReceivedPacket failed to relay. rc = " << endl;
+          } else {
+            cout << "handleReceivedPacket: packet RELAY DONE" << endl;
+          }
+        break;
+        default:
+
+          
+
+          if (err != DUCK_ERR_NONE) {
+            cout << "====> ERROR handleReceivedPacket failed to relay. rc = " << endl;
+          } else {
+            cout << "handleReceivedPacket: packet RELAY DONE" << endl;
+          }
+          payload = duckutils::convertVectorToString(dp.getBuffer());
+                for (int i =0; i < 7; i++) {
+                    payload = modifystring(payload, TOPIC_POS+i);
+                }
+                publish(redisConnect, "mystream", "CDP_LORA",payload , response);
+      }
+    } else if(sduid == dp.dduid) { //Target device check
+        std::vector<uint8_t> dataPayload;
+        uint8_t num = 1;
+        //string ackPayload;
+        
+
+      cout << "Packet was meant to this duck " << endl;
+      switch(dp.topic) {
+        case topics::dcmd:
+          cout<<"Duck command received" << endl;
+          handleDuckCommand(dp);
+        break;
+        case reservedTopic::cmd:
+          cout << "Command received" << endl;
+          
+          //Start send ack that command was received
+
+          
+          dataPayload.push_back(num);
+
+          dataPayload.insert(dataPayload.end(), dp.sduid.begin(), dp.sduid.end());
+          dataPayload.insert(dataPayload.end(), dp.muid.begin(), dp.muid.end());
+
+          err = txAck.prepareForSending(&filter, PAPADUCK_DUID, reservedTopic::ack,DuckType::MAMA, 0, dataPayload);
+          if (err != DUCK_ERR_NONE) {
+          cout << "ERROR handleReceivedPacket. Failed to prepare ack. Error: " << err << endl;
+          }
+
+          /*---send to lora-----*/
+          ackPayload = duckutils::convertVectorToString(txAck.getBuffer());
+          for (int i =0; i < 7; i++) {
+            ackPayload = modifystring(ackPayload, TOPIC_POS+i);
+          }
+          publish(redisConnect, "mystream", "CDP_LORA",ackPayload , response);
+          /*---send to lora-----*/
+          if (err == DUCK_ERR_NONE) {
+            filter.bloom_add(txAck.muid.data(), MUID_LENGTH);
+          } else {
+            cout << "ERROR handleReceivedPacket. Failed to send ack. Error: " << endl;
+          }
+          
+          //Handle Command
+          handleCommand(dp);
+
+          break;
+        case reservedTopic::ack:{
+          handleAck(dp);
+        }
+        break;
+        default:
+          
+          if (err != DUCK_ERR_NONE) {
+            cout << "====> ERROR handleReceivedPacket failed to relay. rc = " << endl;
+          } else {
+            cout << "handleReceivedPacket: packet RELAY DONE" << endl;
+          }
+          
+          payload = duckutils::convertVectorToString(dp.getBuffer());
+                for (int i =0; i < 7; i++) {
+                    payload = modifystring(payload, TOPIC_POS+i);
+                }
+                publish(redisConnect, "mystream", "CDP_LORA",payload , response);
       }
 
     } else {
-      //err = duckRadio.relayPacket(rxPacket);
+      
       if (err != DUCK_ERR_NONE) {
         cout << "====> ERROR handleReceivedPacket failed to relay. rc = " << endl;
       } else {
         cout << "handleReceivedPacket: packet RELAY DONE" << endl;
       }
+      payload = duckutils::convertVectorToString(dp.getBuffer());
+                for (int i =0; i < 7; i++) {
+                    payload = modifystring(payload, TOPIC_POS+i);
+                }
+                publish(redisConnect, "mystream", "CDP_LORA",payload , response);
     }
 
   }
@@ -231,25 +234,32 @@ void MamaDuck::handleCommand(Packet & dp) {
   int err;
   std::vector<uint8_t> dataPayload;
   std::vector<uint8_t> alive = {'I','m',' ','a','l','i','v','e'};
+  Packet healthPacket;
+  string healthPayload;
 
   switch(dp.getBuffer().at(DATA_POS)) {
     case 0:
       //Send health quack
-      //loginfo_ln("Health request received");
+
       cout << "Health request received" << endl;
+      
       dataPayload.insert(dataPayload.end(), alive.begin(), alive.end());
-      err = dp.prepareForSending(&filter, PAPADUCK_DUID, 
+      err = healthPacket.prepareForSending(&filter, PAPADUCK_DUID, 
          topics::health, DuckType::MAMA, 0, dataPayload);
       if (err != DUCK_ERR_NONE) {
       cout << "ERROR handleReceivedPacket. Failed to prepare ack. Error: "<< endl;
       }
 
-      //err = duckRadio.sendData(txPacket->getBuffer());
+      /*---send to lora-----*/
+      healthPayload = duckutils::convertVectorToString(healthPacket.getBuffer());
+          for (int i =0; i < 7; i++) {
+            healthPayload = modifystring(healthPayload, TOPIC_POS+i);
+          }
+      publish(redisConnect, "mystream", "CDP_LORA",healthPayload , response);
+      /*---send to lora-----*/
       if (err == DUCK_ERR_NONE) {
-        //Packet healthPacket = Packet(txPacket->getBuffer());
-        //Packet healthPacket;
-
-        filter.bloom_add(dp.muid.data(), MUID_LENGTH);
+        
+        filter.bloom_add(healthPacket.muid.data(), MUID_LENGTH);
       } else {
         cout << "ERROR handleReceivedPacket. Failed to send ack. Error: " << endl;
       }
@@ -257,18 +267,15 @@ void MamaDuck::handleCommand(Packet & dp) {
     break;
     case 1:
     /*  //Change wifi status
-      #ifdef CDPCFG_WIFI_NONE
-        logwarn_ln("WiFi not supported");
-      #else
         if((char)rxDP.data[1] == '1') {
-          loginfo_ln("Command WiFi ON");
-          WiFi.mode(WIFI_AP);
+          cout << "Command WiFi ON" << endl;
+          
 
         } else if ((char)rxDP.data[1] == '0') {
-          loginfo_ln("Command WiFi OFF");
-          WiFi.mode( WIFI_MODE_NULL );
+          cout << "Command WiFi OFF" << endl;
+          
         }
-      #endif*/
+    */
     break;
     default:
       cout << "Command not recognized" << endl;
@@ -279,7 +286,7 @@ void MamaDuck::handleCommand(Packet & dp) {
 void MamaDuck::handleAck(Packet & dp) {
   
   if (lastMessageMuid.size() == MUID_LENGTH) {
-    const uint8_t numPairs = dp.data[0];
+    const uint8_t numPairs = dp.data.at(0);
     static const int NUM_PAIRS_LENGTH = 1;
     static const int PAIR_LENGTH = DUID_LENGTH + MUID_LENGTH;
     for (int i = 0; i < numPairs; i++) {
@@ -295,10 +302,6 @@ void MamaDuck::handleAck(Packet & dp) {
       }
     }
     
-
-    // TODO[Rory Olsen: 2021-06-23]: The application may need to know about
-    //   acks. I recommend a callback specifically for acks, or
-    //   similar.
   }
 }
 
@@ -307,65 +310,3 @@ void MamaDuck::handleDuckCommand(Packet & dp) {
   cout << "Doesnt do anything yet" << endl;
 }
 
-/*string unmodifyString (string cdp, int position){
-    if(cdp[position] > 54){
-        cdp[position] = cdp[position] - 55;
-    }
-    else{
-        cdp[position] = cdp[position] - 48;
-    }
-    
-    return cdp;
-}*/
-
-int main()
-{
-
-////set device ID
-    string devID = "MAMA0003";
-
-    // Instantiate Packet Object
-    Packet dp;
-
-    MamaDuck md;
-
-    md.setDuckId(duckutils::convertStringToVector("MAMA0003"));
-
-    //static std::vector<uint8_t> BROADCAST_DUID = {0xFF, 0xFF, 0xFF, 0xFF,
-                                              //0xFF, 0xFF, 0xFF, 0xFF};
-    //string bduid = duckutils::convertVectorToString(BROADCAST_DUID);
-    //cout << bduid << endl;
-
-    string CDP = "DUCK0001��������Y3ZB$! ��V ";
-                //DUCK0001MAMA0003Y3ZB08 ��V7
-                //DUCK0001MAMA0003K9WQ0! ��VTest Data String
-                  
-
-    for(int i = 0; i < 7; i++)
-    {
-        CDP = unmodifyString(CDP, TOPIC_POS+i);
-    }
-
-  std::vector<uint8_t> dataRx(CDP.size());
-  //dataRx.size() = sizeof(CDP);
-    dataRx = duckutils::convertStringToVector(CDP);
-    
-    dp.setBuffer(dataRx);
-    //packetRecieved = duckutils::convertStringToVector(CDP);
-    //dp.setBuffer(packetRecieved);
-
-    //gets payload generated
-    //vector<uint8_t> payload = dp.getBuffer();
-
-    //Packet packet = Packet(dp.getBuffer());
-    //duckutils::printVector(packet.getBuffer());
-
-    
-
-    md.handleReceivedPacket(dp);
-
-    //dp.reset();
-
-
-    return 0;
-}

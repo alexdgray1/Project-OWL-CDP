@@ -13,7 +13,7 @@
 #include "BloomFilter.h"
 #include "Utils.h"
 #include "DuckLink.h"
-//#include "MamaDuck.h"
+#include "MamaDuck.h"
 #include "PapaDuck.h"
 //#include "DetectorDuck.h"
 #include "redis.h"
@@ -31,7 +31,7 @@ vector<std::string> extractValues(const std::string input) {
     std::string duid, topic, data, ducktype;
     bool inDataField = false;
 
-    while (std::getline(ss, token, ' ')) {
+    while (std::getline(ss, token, '_')) {
         size_t colonPos = token.find(':');
         if (colonPos != std::string::npos) {
             std::string fieldName = token.substr(0, colonPos);
@@ -45,17 +45,22 @@ vector<std::string> extractValues(const std::string input) {
                 // Start collecting DATA field
                 data = fieldValue;
                 inDataField = true;
-            } else if (fieldName == "DUCKTYPE") {
+
+            } /*else if (fieldName == "DUCKTYPE") {
+                ducktype = fieldValue;
+            }*/
+            
+            else if (fieldName == "DUCKTYPE") {
                 // End of DATA field, collect DUCKTYPE field
                 ducktype = fieldValue;
                 inDataField = false;
             }
         } else if (inDataField) {
-            // Append to DATA field if we are still in the DATA field
-            data += ' ' + token;
+            // Append to DATAcout << cdppayload << endl; field if we are still in the DATA field
+            data += '_' + token;
         }
+    
     }
-
     values.push_back(duid);
     values.push_back(topic);
     values.push_back(data);
@@ -70,7 +75,7 @@ string modifystring (string cdp, int position){
         cdp[position] = cdp[position] ^ 0x80;
     }
     else if (cdp[position] < 32){//non printable characters
-        cdp[position] = cdp[position] ^ 0x10;
+        cdp[position] = cdp[position] ^ 0x20;
     }
     else {
         //dont modify
@@ -79,12 +84,16 @@ string modifystring (string cdp, int position){
     
     return cdp;
 }
+//||
 string unmodifystring (string cdp, int position){
-    if((cdp[position] ^ 0x80) >127){//this goes into extended ascii range
-        cdp[position] = cdp[position] ^ 0x80;
+    
+    
+
+    if ((cdp[position] ^ 0x20) < 32  ){//non printable characters
+        cdp[position] = cdp[position] ^ 0x20;
     }
-    else if ((cdp[position] ^ 0x10) < 32){//non printable characters
-        cdp[position] = cdp[position] ^ 0x10;
+    else if((cdp[position] ^ 0x80) >127){//this goes into extended ascii range
+        cdp[position] = cdp[position] ^ 0x80;
     }
     else {
         //dont modify
@@ -92,6 +101,63 @@ string unmodifystring (string cdp, int position){
     
     
     return cdp;
+}
+
+/*--------------Encodes CDP as string-----------*/
+/*
+vector<uint8_t> checkDDuid.assign(dp.getBuffer().begin()+8, dp.getBuffer().begin()+16);
+string cdppayload;
+if (checkDDuid == BROADCAST_DDUID) {
+    for(int i = 0; i < 7; i++) {
+        cdppayload = modifystring(cdppayload, DUID_POS);
+    }
+
+}
+*/
+
+/*--------decodes CDP as a string--------------*/
+/*
+for(int i = 0; i < 7; i++) {
+        cdppayload = unmodifystring(cdppayload, DUID_POS);
+    }
+for(int i = 0; i < 7; i++) {
+        cdppayload = unmodifystring(cdppayload, TOPIC_POS);
+    }
+*/
+
+string encodeCDP(string cdppayload) {
+    for (int i = 0; i < cdppayload.size(); i++) {//modifies all unreadable characters within the string to make sure they are readable
+        cdppayload = modifystring(cdppayload, SDUID_POS + i);
+    }
+    return cdppayload;
+}
+
+string decodeCDP(string cdppayload) {
+    for (int i = 0; i < cdppayload.size(); i++) {//undoes modifying of string to get actual data initially put in
+        cdppayload = unmodifystring(cdppayload, SDUID_POS + i);
+    }
+    return cdppayload;
+}
+
+string sendToWeb (vector<uint8_t> receivedData) {
+
+    //vector<uint8_t> receivedData;
+    vector<uint8_t> sduid;
+    vector<uint8_t> receivedMsg;
+    string receivedSduid;
+    string receivedTopic;
+    string receivedMessage;
+    string messageForWeb;
+
+    receivedMsg.assign(receivedData.begin()+DATA_POS, receivedData.end());
+    sduid.assign(receivedData.begin(), receivedData.begin() + 8);
+    receivedSduid = duckutils::convertVectorToString(sduid);
+    receivedTopic = Packet::topicToString(receivedData.at(TOPIC_POS));
+    receivedMessage = duckutils::convertVectorToString(receivedMsg);
+    messageForWeb = "SDUID:" + receivedSduid + "_TOPIC:"  + receivedTopic + "_DATA:" + receivedMessage +"_";
+
+    return messageForWeb;
+
 }
 
 RedisConfig initializeRedisWebConfig() {
@@ -135,7 +201,7 @@ int main()
 
     
    
-
+BloomFilter filter = BloomFilter(DEFAULT_NUM_SECTORS, DEFAULT_NUM_HASH_FUNCS, DEFAULT_BITS_PER_SECTOR, DEFAULT_MAX_MESSAGES);
 //////connect redis server
 redisContext* redisConnect = redis_init("localhost", 6379);
 
@@ -145,12 +211,13 @@ redisReply* reply = (redisReply*)redisCommand(redisConnect, "DEL %s", redisConfi
 //redisReply* reply = (redisReply*)redisCommand(redisConnect, "DEL %s", redisConfig.txLoraQueue.c_str());
 //redisReply* reply = (redisReply*)delete_stream(redisConnect, redisConfig.stream_name);
 
-string value = "DUID:MAMA0001 TOPIC:status DATA:Test Data String DUCKTYPE:LINK ";
-string value2 = "DUID:MAMA0001 TOPIC:status DATA:Test Data String Again DUCKTYPE:LINK ";
+string value = "DUID:MAMA0001_TOPIC:status_DATA:HELLO_WORLD_DUCKTYPE:LINK";
+string value2 = "DUID:MAMA0001_TOPIC:status_DATA:Test Data String Again_DUCKTYPE:LINK ";
+
 
 create_consumer_group(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.group_name);
-publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value, redisConfigWeb.response);
-publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value2, redisConfigWeb.response);
+//publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value, redisConfigWeb.response);
+//publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value2, redisConfigWeb.response);
 
 /*---------conditional checks for while loops*/
     int messageReceived = 1;
@@ -159,7 +226,7 @@ publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value2, 
     /*------Duck objects----------*/
     DuckLink dl;
     //DetectorDuck dd;
-    //MamaDuck md;
+    MamaDuck md;
     PapaDuck pd;
 
     /*---------for WEB_CDP--------------*/
@@ -171,12 +238,12 @@ publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value2, 
 
     /*---------for CDP_WEB-------------*/
     vector<uint8_t> receivedData;
-    vector<uint8_t> sduid;
+    /*vector<uint8_t> sduid;
     vector<uint8_t> receivedMsg;
     string receivedSduid;
     string receivedTopic;
     string receivedMessage;
-    string messageForWeb;
+    string messageForWeb;*/
 
     /*----------for CDP_Lora-----------*/
     vector<uint8_t> payload;
@@ -213,27 +280,43 @@ publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value2, 
             
 
             if (DUCKTYPE == "MAMA") {
-                /*md.setDuckId(duckutils::convertStringToVector("MAMA0001"));
-                md.handleReceivedPacket(dp);*/
-                
-            }
-            else if (DUCKTYPE == "PAPA") {
-                pd.setDuckId(duckutils::convertStringToVector("PAPA0001"));
-                /*-------Read from lora begin--------------*/
+                md.setDuckId(duckutils::convertStringToVector("MAMA0001"));
 
                 while(!messageReceivedLora){
-                    //sleep(5);
+                    sleep(5);
                     read_from_consumer_group(redisConnect, redisConfigLora.stream_name, redisConfigLora.group_name, redisConfigLora.consumer_name, redisConfigLora.rxKey, redisConfigLora.key_buffer,redisConfigLora.messageBuffer, redisConfigLora.messageID, redisConfigLora.txLoraQueue, redisConfigLora.task);
                     messageReceivedLora = acknowledge_message(redisConnect, redisConfigLora.stream_name, redisConfigLora.group_name, redisConfigLora.messageID);
                     
                 }
                 dequeue_task(redisConnect, redisConfigLora.rxLoraQueue, redisConfigLora.task);
-                for (int i = 0; i < 7; i++) {//undoes modifying of string to get actual data initially put in
-                    redisConfigLora.task = unmodifystring(redisConfigLora.task, TOPIC_POS + i);
-                }
-                dp.setBuffer(duckutils::convertStringToVector(redisConfigLora.task));
-                messageReceivedLora = 1;
+
+                cdppayload = decodeCDP(redisConfigLora.task);
+
+                dp.setBuffer(duckutils::convertStringToVector(cdppayload));
                 
+                //sends the redis messages in function below
+                md.handleReceivedPacket(dp);
+
+            
+                        
+            }
+            else if (DUCKTYPE == "PAPA") {
+
+                pd.setDuckId(duckutils::convertStringToVector("PAPA0001"));
+
+                /*-------Read from lora begin--------------*/
+                while(!messageReceivedLora){
+                    sleep(5);
+                    read_from_consumer_group(redisConnect, redisConfigLora.stream_name, redisConfigLora.group_name, redisConfigLora.consumer_name, redisConfigLora.rxKey, redisConfigLora.key_buffer,redisConfigLora.messageBuffer, redisConfigLora.messageID, redisConfigLora.txLoraQueue, redisConfigLora.task);
+                    messageReceivedLora = acknowledge_message(redisConnect, redisConfigLora.stream_name, redisConfigLora.group_name, redisConfigLora.messageID);
+                    
+                }
+                dequeue_task(redisConnect, redisConfigLora.rxLoraQueue, redisConfigLora.task);
+
+                cdppayload = decodeCDP(redisConfigLora.task);
+
+
+                dp.setBuffer(duckutils::convertStringToVector(cdppayload));
                 /*-------Read from lora end--------------*/
 
 
@@ -241,47 +324,56 @@ publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value2, 
                 
 
                 /*-------Send to web server begin-----------*/
-                
                 receivedData = dp.getBuffer();
-                receivedMsg.assign(receivedData.begin()+DATA_POS, receivedData.end());
-                sduid.assign(receivedData.begin(), receivedData.begin() + 8);
-                receivedSduid = duckutils::convertVectorToString(sduid);
-                receivedTopic = Packet::topicToString(receivedData.at(TOPIC_POS));
-                receivedMessage = duckutils::convertVectorToString(receivedMsg);
-                messageForWeb = "SDUID:" + receivedSduid + " TOPIC:"  + receivedTopic + " DATA:" + receivedMessage +" ";
+
+                string messageForWeb = sendToWeb(receivedData);
+
                 publish(redisConnect, redisConfigWeb.stream_name, "CDP_WEB", messageForWeb, redisConfigWeb.response);
 
                 redisConfigLora.messageBuffer.clear();
-                //dp.~Packet();
+
                 /*-------Send to web server end-----------*/
 
                 
                 
             }
             else if (DUCKTYPE == "LINK") {
+
+                /*-----setup duck link begin -------*/
                 dl.setDuckId(duckutils::convertStringToVector("DUCK0001"));
-                BloomFilter filter = BloomFilter(DEFAULT_NUM_SECTORS, DEFAULT_NUM_HASH_FUNCS, DEFAULT_BITS_PER_SECTOR, DEFAULT_MAX_MESSAGES);
+                
+                /*-----setup duck link end -------*/
+
+
                 dl.prepareForSending(&filter, dduid, topic, dl.getType(), 0x00, data);
                 
-                /*---------Send to Lora---------*/
+
+                /*---------Send to Lora begin---------*/
                 payload = dl.getBuffer();
                 cdppayload = duckutils::convertVectorToString(payload);
-                for (int i = 0; i < 7; i++) {//modifies all unreadable characters within the string to make sure they are readable
-                    cdppayload = modifystring(cdppayload, TOPIC_POS + i);
-                }
-                //cdppayload = modifystring(cdppayload, TOPIC_POS)
-                publish(redisConnect, redisConfigLora.stream_name, "CDP_LORA", cdppayload, redisConfigLora.response);
-                /*---------Send to Lora---------*/
 
-                //dp.~Packet();
+                cdppayload = encodeCDP(cdppayload);
+                
+                cout << cdppayload << endl;
+
+                cdppayload = decodeCDP(cdppayload);
+                cout << cdppayload;
+                 cdppayload = encodeCDP(cdppayload);
+                 cout << cdppayload << endl;
+                //cdppayload = modifystring(cdppayload, TOPIC_POS)
+
+                publish(redisConnect, redisConfigLora.stream_name, "CDP_LORA", cdppayload, redisConfigLora.response);
+                /*---------Send to Lora end---------*/
                 
                 
             }
             else if (DUCKTYPE == "DETECTOR") {
                 /*dd.setDuckId(duckutils::convertStringToVector("DETECTOR"));
+
+                //make sure ping publishes to CDP_LORA in code
                 dd.sendPing(1);
                 dd.handleReceivedPacket();*/
-                // Add code for setup to send and receive pings
+                
             }
             else {
                 cout << "Error setting duck type. Recheck spelling and ensure all letters are capitalized." << endl;
@@ -295,7 +387,7 @@ publish(redisConnect, redisConfigWeb.stream_name, redisConfigWeb.txKey, value2, 
 
         // Sleep for a while before checking again
         
-        sleep(1); // Sleep for 1 second (or adjust as needed)
+        //sleep(1); // Sleep for 1 second (or adjust as needed)
     }
     redisFree(redisConnect);
 
